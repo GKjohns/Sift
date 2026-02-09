@@ -40,6 +40,13 @@ const links = [[{
     open.value = false
   }
 }], [{
+  label: 'Dev Workbench',
+  icon: 'i-lucide-flask-conical',
+  to: '/dev',
+  onSelect: () => {
+    open.value = false
+  }
+}, {
   label: 'Help & Docs',
   icon: 'i-lucide-info',
   to: '#',

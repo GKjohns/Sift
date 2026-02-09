@@ -14,6 +14,10 @@ export default defineNuxtConfig({
 
   compatibilityDate: '2025-01-15',
 
+  runtimeConfig: {
+    openaiApiKey: process.env.OPENAI_API_KEY || ''
+  },
+
   eslint: {
     config: {
       stylistic: {
