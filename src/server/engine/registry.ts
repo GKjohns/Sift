@@ -14,6 +14,10 @@ import { trendDocs } from './ops/tier1/trend'
 import { unionSets } from './ops/structural/union'
 import { intersectSets } from './ops/structural/intersect'
 
+// Tier 3
+import { labelDocs } from './ops/tier3/label'
+import { extractDocs } from './ops/tier3/extract'
+
 export const registry: Record<string, OpFn> = {
   // Tier 1 — Free
   filter_metadata: filterMetadata,
@@ -27,7 +31,11 @@ export const registry: Record<string, OpFn> = {
 
   // Structural
   union: unionSets,
-  intersect: intersectSets
+  intersect: intersectSets,
+
+  // Tier 3 — Expensive
+  label: labelDocs,
+  extract: extractDocs
 }
 
 export const opTier: Record<string, 1 | 2 | 3> = Object.freeze({
@@ -40,6 +48,8 @@ export const opTier: Record<string, 1 | 2 | 3> = Object.freeze({
   count: 1,
   trend: 1,
   union: 1,
-  intersect: 1
+  intersect: 1,
+  label: 3,
+  extract: 3
 })
 

@@ -7,7 +7,7 @@ const { state } = useCorpus()
 const links = [[{
   label: 'Overview',
   icon: 'i-lucide-layout-dashboard',
-  to: '/',
+  to: '/overview',
   onSelect: () => {
     open.value = false
   }
@@ -71,9 +71,8 @@ const groups = computed(() => [{
       :ui="{ footer: 'lg:border-t lg:border-default' }"
     >
       <template #header="{ collapsed }">
-        <NuxtLink to="/" class="flex items-center gap-2 px-1" :class="collapsed ? 'justify-center' : ''">
-          <UIcon name="i-lucide-scan-search" class="size-6 text-primary shrink-0" />
-          <span v-if="!collapsed" class="font-semibold text-lg tracking-tight text-highlighted">Sift</span>
+        <NuxtLink to="/" class="flex items-center px-1" :class="collapsed ? 'justify-center' : ''">
+          <AppLogo :show-text="!collapsed" />
         </NuxtLink>
       </template>
 

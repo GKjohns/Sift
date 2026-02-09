@@ -7,6 +7,7 @@ const _useDashboard = () => {
 
   defineShortcuts({
     'g-h': () => router.push('/'),
+    'g-o': () => router.push('/overview'),
     'g-m': () => router.push('/messages'),
     'g-q': () => router.push('/query'),
     'g-t': () => router.push('/timeline'),

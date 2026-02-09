@@ -20,12 +20,18 @@ export interface Span {
   text?: string
 }
 
+export interface ThreadLabelMeta {
+  unit: 'thread'
+  thread_id: string
+  cited_messages: string[]
+}
+
 export interface Labels {
-  tone?: { value: ToneLabel; confidence: number; rationale?: string; key_phrases?: string[]; spans?: Span[] }
-  topic?: { value: string; confidence: number; spans?: Span[] }
-  commitment?: { value: string; confidence: number; spans?: Span[] }
-  violation?: { value: string; confidence: number; spans?: Span[] }
-  [custom: string]: { value: any; confidence: number; spans?: Span[]; [key: string]: any } | undefined
+  tone?: { value: ToneLabel; confidence: number; rationale?: string; key_phrases?: string[]; spans?: Span[]; thread_meta?: ThreadLabelMeta }
+  topic?: { value: string; confidence: number; rationale?: string; secondary_topics?: string[]; spans?: Span[]; thread_meta?: ThreadLabelMeta }
+  commitment?: { value: string; confidence: number; rationale?: string; spans?: Span[]; thread_meta?: ThreadLabelMeta }
+  violation?: { value: string; confidence: number; rationale?: string; spans?: Span[]; thread_meta?: ThreadLabelMeta }
+  [custom: string]: { value: any; confidence: number; rationale?: string; spans?: Span[]; thread_meta?: ThreadLabelMeta; [key: string]: any } | undefined
 }
 
 // ── Audit / Trace ─────────────────────────────────────────────────────────────
@@ -111,5 +117,40 @@ export interface ExecutionResult {
   totalCost: number
   stoppedEarly: boolean
   error?: StepError
+}
+
+// ── Planner ──────────────────────────────────────────────────────────────────
+
+export interface CorpusSummary {
+  total_documents: number
+  senders: { name: string; count: number }[]
+  date_range: { start: string; end: string }
+  has_tone_analysis: boolean
+  thread_count: number
+  topics?: string[]
+}
+
+export interface PlannerResult {
+  query_interpretation: string
+  steps: PlanStep[]
+  total_estimated_cost: number
+  reasoning_summary: string
+  usage?: { input_tokens: number; output_tokens: number }
+}
+
+// ── Synthesizer ──────────────────────────────────────────────────────────────
+
+export interface SynthesisCitation {
+  doc_id: string
+  message_number?: number
+  preview: string
+  thread_id?: string
+}
+
+export interface SynthesisResult {
+  answer: string
+  citations: SynthesisCitation[]
+  thread_grouped: boolean
+  usage?: { input_tokens: number; output_tokens: number }
 }
 

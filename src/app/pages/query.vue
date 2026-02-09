@@ -9,12 +9,22 @@ const result = ref<QueryResult | null>(null)
 const visibleSteps = ref<ExecutionStep[]>([])
 const showResult = ref(false)
 
-const exampleQueries = [
-  'Find messages where scheduling was contentious',
-  'How many messages mention the word "lawyer"?',
-  'Is there a pattern of one parent being less responsive?',
-  'Show hostile messages from the last 3 months',
-  'What topics come up most frequently?'
+const exampleQueries: { label: string; complexity: 'simple' | 'medium' | 'complex' }[] = [
+  // Simple — Tier 1 only (keyword, metadata, counting)
+  { label: 'How many messages mention the word "lawyer"?', complexity: 'simple' },
+  { label: 'Show all messages from Sarah Mitchell in January 2025', complexity: 'simple' },
+  { label: 'Which parent sends more messages?', complexity: 'simple' },
+
+  // Medium — Tier 1 + Tier 3 message-level
+  { label: 'Find hostile messages about school pickup', complexity: 'medium' },
+  { label: 'What medical appointments or health issues came up for the kids?', complexity: 'medium' },
+  { label: 'Are there messages where either parent references the custody agreement?', complexity: 'medium' },
+
+  // Complex — thread-level classification, compound questions
+  { label: 'Find conversations where the parents disagreed about an expense over $200', complexity: 'complex' },
+  { label: 'Which threads started hostile but ended cooperatively?', complexity: 'complex' },
+  { label: 'Are there threads where one parent made a commitment and then followed through on it?', complexity: 'complex' },
+  { label: 'Find conversations where David was late or unresponsive and Sarah escalated', complexity: 'complex' },
 ]
 
 async function runQuery() {
@@ -125,19 +135,28 @@ async function navigateToMessage(docId: string) {
         </div>
 
         <!-- Example Queries -->
-        <div v-if="!result" class="space-y-3">
-          <h3 class="text-sm font-medium text-muted">Try an example</h3>
-          <div class="flex flex-wrap gap-2">
-            <UButton
-              v-for="example in exampleQueries"
-              :key="example"
-              :label="example"
-              variant="outline"
-              color="neutral"
-              size="sm"
-              :disabled="!state.loaded.value"
-              @click="queryInput = example"
-            />
+        <div v-if="!result" class="space-y-4">
+          <div v-for="group in [
+            { key: 'simple', title: 'Simple', description: 'Keyword search, metadata filters, counting' },
+            { key: 'medium', title: 'Medium', description: 'Filters + LLM classification' },
+            { key: 'complex', title: 'Complex', description: 'Thread-level analysis, compound questions' },
+          ]" :key="group.key" class="space-y-2">
+            <div class="flex items-center gap-2">
+              <h3 class="text-xs font-medium text-muted uppercase tracking-wide">{{ group.title }}</h3>
+              <span class="text-xs text-dimmed">— {{ group.description }}</span>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <UButton
+                v-for="example in exampleQueries.filter(q => q.complexity === group.key)"
+                :key="example.label"
+                :label="example.label"
+                variant="outline"
+                color="neutral"
+                size="sm"
+                :disabled="!state.loaded.value"
+                @click="queryInput = example.label"
+              />
+            </div>
           </div>
         </div>
 
