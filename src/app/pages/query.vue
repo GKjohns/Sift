@@ -1,15 +1,44 @@
 <script setup lang="ts">
 import type { QueryResult, ExecutionStep } from '~/types'
 
-const { state } = useCorpus()
+const { state, uploadCorpus } = useCorpus()
+
+// Auto-load corpus if not loaded yet (e.g. direct navigation or page refresh)
+if (!state.loaded.value && !state.loading.value) {
+  uploadCorpus()
+}
 
 const queryInput = ref('')
 const isRunning = ref(false)
 const result = ref<QueryResult | null>(null)
 const visibleSteps = ref<ExecutionStep[]>([])
 const showResult = ref(false)
+const expandedSteps = ref<Set<string>>(new Set())
 
-const exampleQueries: { label: string; complexity: 'simple' | 'medium' | 'complex' }[] = [
+function toggleStepArgs(stepId: string) {
+  if (expandedSteps.value.has(stepId)) {
+    expandedSteps.value.delete(stepId)
+  } else {
+    expandedSteps.value.add(stepId)
+  }
+  // trigger reactivity
+  expandedSteps.value = new Set(expandedSteps.value)
+}
+
+function truncateArgs(args: Record<string, unknown>): string {
+  const str = JSON.stringify(args)
+  if (str.length <= 60) return str
+  return str.slice(0, 57) + '…'
+}
+
+type ExampleQueryComplexity = 'simple' | 'medium' | 'complex'
+
+interface ExampleQuery {
+  label: string
+  complexity: ExampleQueryComplexity
+}
+
+const exampleQueries: ExampleQuery[] = [
   // Simple — Tier 1 only (keyword, metadata, counting)
   { label: 'How many messages mention the word "lawyer"?', complexity: 'simple' },
   { label: 'Show all messages from Sarah Mitchell in January 2025', complexity: 'simple' },
@@ -24,7 +53,7 @@ const exampleQueries: { label: string; complexity: 'simple' | 'medium' | 'comple
   { label: 'Find conversations where the parents disagreed about an expense over $200', complexity: 'complex' },
   { label: 'Which threads started hostile but ended cooperatively?', complexity: 'complex' },
   { label: 'Are there threads where one parent made a commitment and then followed through on it?', complexity: 'complex' },
-  { label: 'Find conversations where David was late or unresponsive and Sarah escalated', complexity: 'complex' },
+  { label: 'Find conversations where David was late or unresponsive and Sarah escalated', complexity: 'complex' }
 ]
 
 async function runQuery() {
@@ -81,13 +110,8 @@ function formatDuration(ms: number) {
   return `${(ms / 1000).toFixed(1)}s`
 }
 
-async function navigateToMessage(docId: string) {
-  try {
-    const lookup = await $fetch<{ thread_id: string }>(`/api/messages/lookup/${docId}`)
-    navigateTo(`/messages/${lookup.thread_id}?msg=${docId}`)
-  } catch {
-    navigateTo('/messages')
-  }
+function navigateToMessage(docId: string) {
+  navigateTo(`/messages?msg=${docId}`)
 }
 </script>
 
@@ -136,13 +160,19 @@ async function navigateToMessage(docId: string) {
 
         <!-- Example Queries -->
         <div v-if="!result" class="space-y-4">
-          <div v-for="group in [
-            { key: 'simple', title: 'Simple', description: 'Keyword search, metadata filters, counting' },
-            { key: 'medium', title: 'Medium', description: 'Filters + LLM classification' },
-            { key: 'complex', title: 'Complex', description: 'Thread-level analysis, compound questions' },
-          ]" :key="group.key" class="space-y-2">
+          <div
+            v-for="group in [
+              { key: 'simple', title: 'Simple', description: 'Keyword search, metadata filters, counting' },
+              { key: 'medium', title: 'Medium', description: 'Filters + LLM classification' },
+              { key: 'complex', title: 'Complex', description: 'Thread-level analysis, compound questions' }
+            ]"
+            :key="group.key"
+            class="space-y-2"
+          >
             <div class="flex items-center gap-2">
-              <h3 class="text-xs font-medium text-muted uppercase tracking-wide">{{ group.title }}</h3>
+              <h3 class="text-xs font-medium text-muted uppercase tracking-wide">
+                {{ group.title }}
+              </h3>
               <span class="text-xs text-dimmed">— {{ group.description }}</span>
             </div>
             <div class="flex flex-wrap gap-2">
@@ -165,7 +195,9 @@ async function navigateToMessage(docId: string) {
         <!-- Execution Plan -->
         <div class="space-y-3">
           <div class="flex items-center justify-between">
-            <h3 class="text-sm font-medium text-highlighted">Execution Plan</h3>
+            <h3 class="text-sm font-medium text-highlighted">
+              Execution Plan
+            </h3>
             <div v-if="visibleSteps.length > 0" class="flex items-center gap-3 text-xs text-muted">
               <span>{{ visibleSteps.length }} steps</span>
               <span>·</span>
@@ -207,8 +239,38 @@ async function navigateToMessage(docId: string) {
                   <div class="flex items-center gap-3 mt-1 text-xs text-muted">
                     <span v-if="step.result_count !== null">{{ step.result_count }} results</span>
                     <span>{{ formatCost(step.cost) }}</span>
-                    <code class="text-xs bg-elevated px-1.5 py-0.5 rounded font-mono">{{ JSON.stringify(step.args) }}</code>
                   </div>
+
+                  <!-- Expandable args -->
+                  <button
+                    class="mt-2 flex items-center gap-1.5 text-xs text-muted hover:text-highlighted transition-colors group cursor-pointer"
+                    @click="toggleStepArgs(step.id)"
+                  >
+                    <UIcon
+                      name="i-lucide-chevron-right"
+                      class="size-3.5 transition-transform duration-200"
+                      :class="expandedSteps.has(step.id) ? 'rotate-90' : ''"
+                    />
+                    <span class="font-mono">args</span>
+                    <code
+                      v-if="!expandedSteps.has(step.id)"
+                      class="text-xs text-dimmed bg-elevated px-1.5 py-0.5 rounded font-mono truncate max-w-sm"
+                    >{{ truncateArgs(step.args) }}</code>
+                  </button>
+
+                  <Transition
+                    enter-active-class="transition-all duration-200 ease-out"
+                    leave-active-class="transition-all duration-150 ease-in"
+                    enter-from-class="opacity-0 max-h-0"
+                    enter-to-class="opacity-100 max-h-96"
+                    leave-from-class="opacity-100 max-h-96"
+                    leave-to-class="opacity-0 max-h-0"
+                  >
+                    <pre
+                      v-if="expandedSteps.has(step.id)"
+                      class="mt-2 text-xs font-mono bg-elevated rounded-md p-3 overflow-x-auto text-highlighted whitespace-pre-wrap break-words"
+                    >{{ JSON.stringify(step.args, null, 2) }}</pre>
+                  </Transition>
                 </div>
               </div>
             </div>
@@ -230,8 +292,12 @@ async function navigateToMessage(docId: string) {
           <div v-else-if="!isRunning" class="flex items-center justify-center h-48 border border-dashed border-default rounded-lg">
             <div class="text-center space-y-2">
               <UIcon name="i-lucide-git-branch" class="size-10 text-muted" />
-              <p class="text-sm text-muted">Run a query to see the execution plan</p>
-              <p class="text-xs text-muted">Each operation will appear as a step in a pipeline</p>
+              <p class="text-sm text-muted">
+                Run a query to see the execution plan
+              </p>
+              <p class="text-xs text-muted">
+                Each operation will appear as a step in a pipeline
+              </p>
             </div>
           </div>
 
@@ -239,25 +305,32 @@ async function navigateToMessage(docId: string) {
           <div v-else class="flex items-center justify-center h-48 border border-dashed border-default rounded-lg">
             <div class="text-center space-y-3">
               <UIcon name="i-lucide-loader-circle" class="size-10 text-primary animate-spin mx-auto" />
-              <p class="text-sm text-muted">Decomposing query into operations...</p>
+              <p class="text-sm text-muted">
+                Decomposing query into operations...
+              </p>
             </div>
           </div>
         </div>
 
         <!-- Result -->
         <div class="space-y-3">
-          <h3 class="text-sm font-medium text-highlighted">Result</h3>
+          <h3 class="text-sm font-medium text-highlighted">
+            Result
+          </h3>
 
           <div v-if="showResult && result" class="space-y-4">
             <!-- Answer prose -->
             <div class="rounded-lg border border-default bg-default p-5">
-              <!-- eslint-disable-next-line vue/no-v-html -->
-              <div class="prose prose-sm dark:prose-invert max-w-none text-highlighted leading-relaxed" v-html="renderMarkdown(result.answer)" />
+              <div class="prose prose-sm dark:prose-invert max-w-none text-highlighted leading-relaxed">
+                <MDC :value="result.answer" />
+              </div>
             </div>
 
             <!-- Citations -->
             <div v-if="result.citations.length > 0" class="space-y-2">
-              <p class="text-xs font-medium text-muted uppercase tracking-wide">Sources</p>
+              <p class="text-xs font-medium text-muted uppercase tracking-wide">
+                Sources
+              </p>
               <div class="flex flex-wrap gap-2">
                 <button
                   v-for="cite in result.citations"
@@ -269,7 +342,9 @@ async function navigateToMessage(docId: string) {
                     <UIcon name="i-lucide-message-square-text" class="size-3 text-muted" />
                     <span class="text-xs font-mono font-medium text-highlighted">Msg #{{ cite.message_number }}</span>
                   </div>
-                  <p class="text-xs text-muted line-clamp-2">{{ cite.preview }}</p>
+                  <p class="text-xs text-muted line-clamp-2">
+                    {{ cite.preview }}
+                  </p>
                 </button>
               </div>
             </div>
@@ -295,7 +370,9 @@ async function navigateToMessage(docId: string) {
           <div v-else-if="!isRunning" class="flex items-center justify-center h-32 border border-dashed border-default rounded-lg">
             <div class="text-center space-y-2">
               <UIcon name="i-lucide-message-circle" class="size-10 text-muted" />
-              <p class="text-sm text-muted">Results with inline citations will appear here</p>
+              <p class="text-sm text-muted">
+                Results with inline citations will appear here
+              </p>
             </div>
           </div>
         </div>
@@ -303,17 +380,3 @@ async function navigateToMessage(docId: string) {
     </template>
   </UDashboardPanel>
 </template>
-
-<script lang="ts">
-// Simple markdown rendering for bold, italic, and line breaks
-function renderMarkdown(text: string): string {
-  return text
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/\n\n/g, '</p><p class="mt-3">')
-    .replace(/\n(\d+\.)/g, '<br>$1')
-    .replace(/\n- /g, '<br>• ')
-    .replace(/^/, '<p>')
-    .replace(/$/, '</p>')
-}
-</script>

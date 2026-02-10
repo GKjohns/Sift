@@ -49,6 +49,7 @@ export const opTier: Record<string, 1 | 2 | 3> = Object.freeze({
   trend: 1,
   union: 1,
   intersect: 1,
+  filter_by_label: 1,
   label: 3,
   extract: 3
 })

@@ -149,7 +149,8 @@ function buildSystemPrompt(isThreadGrouped: boolean): string {
 3. BE CONCISE — The user is a legal professional. Be precise and factual, not verbose.
 4. ACKNOWLEDGE LIMITATIONS — If the results are incomplete (e.g., budget was exceeded, a step errored), say so.
 5. USE THE LABELS — When documents have classification labels (tone, topic, custom), reference them to support your answer.
-6. CONFIDENCE MATTERS — Only cite high-confidence results (confidence > 0.6) as definitive. Mention lower-confidence matches as "possible" or "uncertain".`
+6. CONFIDENCE MATTERS — Only cite high-confidence results (confidence > 0.6) as definitive. Mention lower-confidence matches as "possible" or "uncertain".
+7. FORMATTING — You may format the answer using Markdown (headings, bullet lists, emphasis). Do NOT use HTML.`
 
   if (isThreadGrouped) {
     return `${base}
@@ -186,7 +187,7 @@ const synthesisOutputSchema = {
   properties: {
     answer: {
       type: 'string',
-      description: 'The prose answer to the user query, with inline [doc-id] citations'
+      description: 'The answer to the user query in Markdown, with inline [doc-id] citations'
     },
     citations: {
       type: 'array',
@@ -195,9 +196,9 @@ const synthesisOutputSchema = {
         properties: {
           doc_id: { type: 'string', description: 'The document ID being cited' },
           preview: { type: 'string', description: 'A short excerpt (1-2 sentences) from the cited message' },
-          thread_id: { type: 'string', description: 'The thread ID this message belongs to, if applicable' }
+          thread_id: { type: 'string', description: 'The thread ID this message belongs to, if applicable. Use empty string if unknown.' }
         },
-        required: ['doc_id', 'preview'],
+        required: ['doc_id', 'preview', 'thread_id'],
         additionalProperties: false
       },
       description: 'Array of citations referenced in the answer'

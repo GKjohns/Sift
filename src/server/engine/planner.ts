@@ -178,9 +178,9 @@ it's producing wrong answers.
 
 Produce a plan as an array of steps. Each step has:
 - op: Operation name (must be from the list above)
-- args: Arguments object for the operation
+- args_json: A JSON-encoded string of the arguments object (e.g. '{"terms": ["lawyer"], "mode": "any"}')
 - id: (optional) String identifier, only needed if another step references this one
-- input: (optional) Where this step gets its DocSet
+- input: (optional) Where this step gets its DocSet. Empty string or omit for previous step output. "corpus" for full corpus. A step id for that step's output. Comma-separated ids for union/intersect (e.g. "lex,sem").
 - rationale: Why this step is needed
 - estimated_cost: Estimated cost in USD (0 for free ops)`
 }
@@ -191,19 +191,13 @@ const planStepSchema = {
   type: 'object',
   properties: {
     op: { type: 'string', description: 'Operation name from the available operations list' },
-    args: { type: 'object', description: 'Arguments for the operation', additionalProperties: true },
-    id: { type: 'string', description: 'Optional step identifier for branching plans' },
-    input: {
-      anyOf: [
-        { type: 'string' },
-        { type: 'array', items: { type: 'string' } }
-      ],
-      description: 'Input reference: omit for previous step output, "corpus" for full corpus, step id string, or array of step ids for union/intersect'
-    },
+    args_json: { type: 'string', description: 'JSON-encoded string of arguments for the operation, e.g. \'{"terms": ["lawyer"], "mode": "any"}\'. Use "{}" if no arguments.' },
+    id: { type: 'string', description: 'Step identifier. Use a short slug if another step needs to reference this one (e.g. "lex"), otherwise use empty string "".' },
+    input: { type: 'string', description: 'Input reference. Empty string "" = previous step output (default). "corpus" = full corpus. A step id = that step\'s output. Comma-separated ids (e.g. "lex,sem") for union/intersect.' },
     rationale: { type: 'string', description: 'Why this step is needed' },
     estimated_cost: { type: 'number', description: 'Estimated cost in USD (0 for free ops)' }
   },
-  required: ['op', 'args', 'rationale', 'estimated_cost'],
+  required: ['op', 'args_json', 'id', 'input', 'rationale', 'estimated_cost'],
   additionalProperties: false
 } as const
 
@@ -258,14 +252,31 @@ export async function generatePlan(
 
   const steps: PlanStep[] = Array.isArray(raw.steps)
     ? raw.steps.map((s: any) => {
+        // Parse args from JSON string
+        let args: Record<string, any> = {}
+        try {
+          args = typeof s.args_json === 'string' ? JSON.parse(s.args_json) : {}
+        } catch {
+          args = {}
+        }
+
         const step: PlanStep = {
           op: String(s.op ?? ''),
-          args: (s.args && typeof s.args === 'object') ? s.args : {},
+          args,
           rationale: typeof s.rationale === 'string' ? s.rationale : undefined,
           estimated_cost: typeof s.estimated_cost === 'number' ? s.estimated_cost : 0
         }
         if (s.id) step.id = String(s.id)
-        if (s.input !== undefined && s.input !== null) step.input = s.input
+
+        // Parse input — could be empty string (ignore), "corpus", a step id, or comma-separated ids
+        if (typeof s.input === 'string' && s.input.trim()) {
+          const trimmed = s.input.trim()
+          if (trimmed.includes(',')) {
+            step.input = trimmed.split(',').map((x: string) => x.trim()).filter(Boolean)
+          } else {
+            step.input = trimmed
+          }
+        }
         return step
       })
     : []

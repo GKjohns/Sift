@@ -4,34 +4,44 @@ export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const search = (query.search as string || '').toLowerCase()
   const tone = query.tone as string || 'all'
+  const sender = query.sender as string || 'all'
+  const sort = query.sort as string || 'newest'
 
   const docs = generateDocuments()
   const labels = generateLabels(docs)
-  let threads = buildThreadSummaries(docs, labels)
+  let messages = buildMessageList(docs, labels)
 
-  // Apply search filter (matches thread subject or message text within threads)
+  // Apply search filter
   if (search) {
-    const allMessages = buildMessageList(docs, labels)
-    threads = threads.filter((t) => {
-      // Match on subject
-      if (t.subject.toLowerCase().includes(search)) return true
-      // Match on any message text in the thread
-      return allMessages.some(
-        m => m.thread_id === t.thread_id && m.text.toLowerCase().includes(search)
-      )
-    })
+    messages = messages.filter(m =>
+      m.text.toLowerCase().includes(search)
+      || m.sender.toLowerCase().includes(search)
+      || (m.subject?.toLowerCase().includes(search) ?? false)
+    )
   }
 
-  // Apply tone filter (threads that contain at least one message with the tone)
+  // Apply tone filter
   if (tone !== 'all') {
-    threads = threads.filter((t) => {
-      const key = tone as keyof typeof t.tone_summary
-      return t.tone_summary[key] > 0
-    })
+    messages = messages.filter(m => m.tone === tone)
   }
+
+  // Apply sender filter
+  if (sender !== 'all') {
+    messages = messages.filter(m => m.sender === sender)
+  }
+
+  // Sort
+  if (sort === 'oldest') {
+    messages.sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+  } else {
+    messages.sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+  }
+
+  const senders = [...new Set(docs.map(d => d.metadata.sender))]
 
   return {
-    threads,
-    total: threads.length
+    messages,
+    total: messages.length,
+    senders
   }
 })

@@ -111,6 +111,21 @@ export interface OpResult {
 
 export type OpFn = (docSet: import('./docset').DocSet, args: Record<string, any>, ctx: ExecContext) => Promise<OpResult>
 
+// ── Token Pricing ────────────────────────────────────────────────────────────
+
+/** Per-token pricing (USD per token) by model */
+const MODEL_PRICING: Record<string, { input: number; output: number }> = {
+  'gpt-5-nano': { input: 0.10 / 1_000_000, output: 0.40 / 1_000_000 },
+  'gpt-5-mini': { input: 0.40 / 1_000_000, output: 1.60 / 1_000_000 }
+}
+
+/** Compute estimated USD cost from token usage */
+export function estimateCost(model: string, inputTokens: number, outputTokens: number): number {
+  const pricing = MODEL_PRICING[model]
+  if (!pricing) return 0
+  return pricing.input * inputTokens + pricing.output * outputTokens
+}
+
 export interface ExecutionResult {
   finalDocSet: import('./docset').DocSet
   trace: StepTrace[]

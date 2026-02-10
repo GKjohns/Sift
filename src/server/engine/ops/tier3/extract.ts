@@ -2,6 +2,7 @@ import type OpenAI from 'openai'
 
 import type { DocSet } from '../../docset'
 import type { ExecContext, Labels, OpResult, Span } from '../../types'
+import { estimateCost } from '../../types'
 import { groupByThread } from '../../utils/thread-grouper'
 
 import { useOpenAI } from '../../../utils/openai'
@@ -201,7 +202,7 @@ export async function extractDocs(docSet: DocSet, args: Record<string, any>, ctx
       docSet: docSet.withLabels(nextLabels),
       meta: {
         duration_ms: 0,
-        cost_usd: 0,
+        cost_usd: estimateCost(model, totalInputTokens, totalOutputTokens),
         result_count: docSet.docs.length,
         detail: {
           schema,
@@ -263,7 +264,7 @@ export async function extractDocs(docSet: DocSet, args: Record<string, any>, ctx
     docSet: docSet.withLabels(nextLabels),
     meta: {
       duration_ms: 0,
-      cost_usd: 0,
+      cost_usd: estimateCost(model, totalInputTokens, totalOutputTokens),
       result_count: docSet.docs.length,
       detail: {
         schema,
