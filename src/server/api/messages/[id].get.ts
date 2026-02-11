@@ -1,10 +1,13 @@
+import { getCorpus } from '../../utils/corpus-store'
+
 export default defineEventHandler(async (event) => {
-  await delay(150)
+  const corpus = await getCorpus()
+  if (!corpus) {
+    throw createError({ statusCode: 404, message: 'No corpus loaded' })
+  }
 
   const id = getRouterParam(event, 'id')
-  const docs = generateDocuments()
-  const labels = generateLabels(docs)
-  const allMessages = buildMessageList(docs, labels)
+  const allMessages = corpus.messages
 
   // Find the target message by doc ID
   const target = allMessages.find(m => m.id === id)
@@ -31,6 +34,6 @@ export default defineEventHandler(async (event) => {
   return {
     ...target,
     context_before,
-    context_after
+    context_after,
   }
 })

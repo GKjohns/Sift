@@ -1,5 +1,10 @@
+import { getCorpus } from '../../utils/corpus-store'
+
 export default defineEventHandler(async (event) => {
-  await delay(300)
+  const corpus = await getCorpus()
+  if (!corpus) {
+    return { messages: [], total: 0, senders: [], threads: [], }
+  }
 
   const query = getQuery(event)
   const search = (query.search as string || '').toLowerCase()
@@ -7,16 +12,14 @@ export default defineEventHandler(async (event) => {
   const sender = query.sender as string || 'all'
   const sort = query.sort as string || 'newest'
 
-  const docs = generateDocuments()
-  const labels = generateLabels(docs)
-  let messages = buildMessageList(docs, labels)
+  let messages = [...corpus.messages]
 
   // Apply search filter
   if (search) {
     messages = messages.filter(m =>
       m.text.toLowerCase().includes(search)
       || m.sender.toLowerCase().includes(search)
-      || (m.subject?.toLowerCase().includes(search) ?? false)
+      || (m.subject?.toLowerCase().includes(search) ?? false),
     )
   }
 
@@ -33,15 +36,18 @@ export default defineEventHandler(async (event) => {
   // Sort
   if (sort === 'oldest') {
     messages.sort((a, b) => a.timestamp.localeCompare(b.timestamp))
-  } else {
+  }
+  else {
     messages.sort((a, b) => b.timestamp.localeCompare(a.timestamp))
   }
 
-  const senders = [...new Set(docs.map(d => d.metadata.sender))]
+  const senders = [...new Set(corpus.documents.map(d => d.metadata.sender))]
 
   return {
     messages,
     total: messages.length,
-    senders
+    senders,
+    // Also return threads for the thread view
+    threads: corpus.threads,
   }
 })

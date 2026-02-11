@@ -1,6 +1,6 @@
 import type { ExecutionStep, QueryResult } from '~/types'
 
-import { generateDocuments } from '../../utils/fake-data'
+import { getCorpus } from '../../utils/corpus-store'
 import { generatePlan } from '../../engine/planner'
 import { executePlan } from '../../engine/executor'
 import { synthesize } from '../../engine/synthesizer'
@@ -35,18 +35,29 @@ export default defineEventHandler(async (event) => {
   const query = body.query.trim()
   const budgetLimit = Number.isFinite(body.budget) ? Number(body.budget) : 1.0
 
-  // Load corpus (fake data for now — real corpus loading is a separate feature)
-  const corpus = generateDocuments()
+  // Load the real, uploaded corpus (in-memory, with disk fallback)
+  const corpusData = await getCorpus()
+  if (!corpusData) {
+    throw createError({
+      statusCode: 409,
+      message: 'No corpus loaded. Upload a PDF from the Overview page to start querying.'
+    })
+  }
+
+  const corpus = corpusData.documents
 
   // ── Step 1: Plan ──────────────────────────────────────────────────────────
   let planResult
   try {
     planResult = await generatePlan(query, corpus)
   } catch (err: any) {
+    console.error('[query/run] Planner error:', err?.message ?? String(err))
+
+    // Surface the real error to the client.
+    const status = err?.statusCode ?? err?.status ?? 502
     throw createError({
-      statusCode: 502,
-      message: 'Planning failed',
-      data: { detail: err?.message ?? String(err) }
+      statusCode: typeof status === 'number' ? status : 502,
+      message: `Planning failed: ${err?.message ?? String(err)}`
     })
   }
 
