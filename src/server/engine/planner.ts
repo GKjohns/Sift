@@ -58,8 +58,8 @@ function buildSystemPrompt(summary: CorpusSummary): string {
     Example args: { "sender": "Sarah Mitchell", "after": "2025-03-01" }
 - search_lex(terms, mode) — Keyword search. Modes: "any", "all", "phrase".
     Example args: { "terms": ["lawyer", "court"], "mode": "any" }
-- search_regex(pattern) — Regex over document text.
-    Example args: { "pattern": "\\$\\d{2,}" }
+- search_regex(pattern, flags) — Regex over document text. Use the "flags" arg for case-insensitivity (e.g. "i"). Do NOT use inline modifiers like (?i) inside the pattern — they are not supported in JavaScript regex.
+    Example args: { "pattern": "\\b(lawyer|lawyers|attorney|attorneys)\\b", "flags": "i" }
 - top_k(by, k) — Take top K docs by timestamp or relevance.
     Example args: { "by": "timestamp", "k": 20 }
 - sample(n, strategy) — Random, stratified, or recent sample.
@@ -75,27 +75,37 @@ function buildSystemPrompt(summary: CorpusSummary): string {
 - intersect — Keep only docs present in all inputs.
 
 ### TIER 3 — Expensive (LLM per document/thread):
-- label(schema, unit, budget) — Classify documents or threads.
-    schema: "tone" | "topic" | "commitment" | "violation" | <custom string>
-    unit: "message" | "thread"    (default: "message")
-    budget?: number
+- label(schema, unit) — Classify documents or threads.
+    schema: a short description of what to classify.
+      Well-known: "tone" (returns hostile/neutral/cooperative), "topic" (returns a topic name).
+      Custom: any natural language question, e.g. "Does this thread contain a scheduling dispute?"
+    unit: "message" | "thread" (default: "message")
 
-    When unit is "thread", the op classifies entire conversation threads
-    rather than individual messages. The LLM sees the full back-and-forth
-    and can identify patterns that span multiple messages. Labels are
-    propagated to all messages in classified threads. The LLM returns
-    cited_messages listing which specific messages support its judgment.
+    The LLM ALWAYS returns: { label: string, confidence: number, rationale: string, cited_messages: string[] }
+    For yes/no questions, label will be "yes" or "no".
+    For tone, label will be "hostile", "neutral", or "cooperative".
+    For custom schemas, label will be whatever short string the classifier chooses.
+
+    When unit is "thread", the full conversation is sent to the LLM as one classification call.
 
 - extract(schema, unit) — Pull structured fields from docs or threads.
     schema: "commitments" | "violations" | "financial_amounts" | <custom string>
-    unit: "message" | "thread"    (default: "message")
+    unit: "message" | "thread" (default: "message")
 
-    When unit is "thread", extractions can reference cross-message patterns.
-    Each extracted item still references a specific message_id and span.
+- filter_by_label(condition) — Filter on labels produced by the label() op.
+    The label structure is always: { value: string, confidence: number }
+    Use "label" to reference the value, "confidence" for the score.
 
-- filter_by_label(condition) — Filter on LLM-generated labels.
-    Example args: { "condition": "tone == hostile AND confidence > 0.7" }
-    Condition syntax: comparisons joined by AND / OR. AND binds tighter.
+    Examples:
+      { "condition": "label == yes AND confidence > 0.6" }
+      { "condition": "label == hostile" }
+      { "condition": "tone == hostile AND confidence >= 0.7" }
+      { "condition": "label != no" }
+
+    Condition syntax: comparisons joined by AND. Operators: ==, !=, >, <, >=, <=.
+
+    IMPORTANT: "label" always refers to the string value from the label() step.
+    For yes/no custom schemas, use: label == yes / label == no.
 
 - timeline(event_schema) — Extract events, order chronologically.
 
@@ -235,7 +245,7 @@ export async function generatePlan(
     model: 'gpt-5-mini',
     instructions,
     input: query,
-    reasoning: { effort: 'high' },
+    reasoning: { effort: 'medium' },
     text: {
       format: {
         type: 'json_schema',

@@ -1,21 +1,20 @@
 import type OpenAI from 'openai'
 
-import type { ToneLabel } from '~/types'
 import type { DocSet } from '../../docset'
 import type { ExecContext, Labels, OpResult, ThreadLabelMeta } from '../../types'
 import { estimateCost } from '../../types'
 import { groupByThread } from '../../utils/thread-grouper'
+import { parallelMap } from '../../utils/parallel'
 
 import { useOpenAI } from '../../../utils/openai'
+
+/** Max concurrent OpenAI calls for labeling */
+const CONCURRENCY = 10
 
 type Unit = 'message' | 'thread'
 
 function getClient(ctx: ExecContext): OpenAI {
   return (ctx.openai as OpenAI | undefined) ?? useOpenAI()
-}
-
-function schemaKey(raw: unknown): string {
-  return String(raw ?? '').trim()
 }
 
 function asUnit(raw: unknown): Unit {
@@ -28,86 +27,74 @@ function clamp01(n: any): number {
   return Math.max(0, Math.min(1, x))
 }
 
-function mergeLabel(nextLabels: Map<string, Labels>, docId: string, key: string, value: any): void {
-  const existing = nextLabels.get(docId) ?? {}
-  nextLabels.set(docId, { ...existing, [key]: value } as Labels)
-}
+// ── Unified JSON Schema ──────────────────────────────────────────────────────
+//
+// Every label call — tone, topic, or custom — uses the SAME output schema.
+// The LLM always returns:
+//   { label: string, confidence: number, rationale: string, cited_messages: string[] }
+//
+// Examples:
+//   tone:   { label: "hostile",  confidence: 0.85, rationale: "...", cited_messages: ["doc-042"] }
+//   topic:  { label: "scheduling", confidence: 0.9, rationale: "...", cited_messages: [] }
+//   custom: { label: "yes",      confidence: 0.7,  rationale: "...", cited_messages: ["doc-007"] }
+//           { label: "no",       confidence: 0.95, rationale: "...", cited_messages: [] }
+//
+// This makes filter_by_label trivial: `label == "hostile" AND confidence > 0.7`
 
-function toneSchema(unit: Unit) {
-  return {
-    type: 'object',
-    properties: {
-      overall_tone: { type: 'string', enum: ['hostile', 'neutral', 'cooperative'] },
-      confidence: { type: 'number' },
-      rationale: { type: 'string' },
-      cited_messages: { type: 'array', items: { type: 'string' } },
-      key_phrases: { type: 'array', items: { type: 'string' } }
+const LABEL_OUTPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    label: {
+      type: 'string',
+      description: 'The classification result. For yes/no questions use "yes" or "no". For tone use "hostile", "neutral", or "cooperative". For topics use a short topic name. Keep it short and lowercase.'
     },
-    required: unit === 'thread'
-      ? ['overall_tone', 'confidence', 'rationale', 'cited_messages']
-      : ['overall_tone', 'confidence', 'rationale'],
-    additionalProperties: false
-  } as const
-}
+    confidence: {
+      type: 'number',
+      description: 'Confidence score from 0.0 to 1.0'
+    },
+    rationale: {
+      type: 'string',
+      description: 'One sentence explaining why this label was chosen'
+    },
+    cited_messages: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Message IDs (e.g. "doc-042") that support this classification. Only include the key evidence, not every message.'
+    }
+  },
+  required: ['label', 'confidence', 'rationale', 'cited_messages'],
+  additionalProperties: false
+} as const
 
-function topicSchema(unit: Unit) {
-  return {
-    type: 'object',
-    properties: {
-      primary_topic: { type: 'string' },
-      secondary_topics: { type: 'array', items: { type: 'string' } },
-      confidence: { type: 'number' },
-      rationale: { type: 'string' },
-      cited_messages: { type: 'array', items: { type: 'string' } }
-    },
-    required: unit === 'thread'
-      ? ['primary_topic', 'confidence', 'rationale', 'cited_messages']
-      : ['primary_topic', 'confidence', 'rationale'],
-    additionalProperties: false
-  } as const
-}
-
-function customSchema(unit: Unit) {
-  return {
-    type: 'object',
-    properties: {
-      matches: { type: 'boolean' },
-      confidence: { type: 'number' },
-      rationale: { type: 'string' },
-      cited_messages: { type: 'array', items: { type: 'string' } },
-      details: { type: 'object', additionalProperties: true }
-    },
-    required: unit === 'thread'
-      ? ['matches', 'confidence', 'rationale', 'cited_messages', 'details']
-      : ['matches', 'confidence', 'rationale', 'details'],
-    additionalProperties: false
-  } as const
-}
+// ── Instructions ─────────────────────────────────────────────────────────────
 
 function labelInstructions(schema: string, unit: Unit): string {
   const base = `You are a classifier for co-parenting communication.
 
-Return ONLY valid JSON that matches the provided JSON schema.
+Classification task: ${schema}
 
-Classification target schema: ${schema}`
+Return a JSON object with:
+- "label": your classification (a short string — e.g. "hostile", "yes", "scheduling"). For yes/no questions, use "yes" or "no".
+- "confidence": 0.0 to 1.0
+- "rationale": one sentence explaining your reasoning
+- "cited_messages": array of message IDs (e.g. ["doc-042"]) that are key evidence`
 
   if (unit === 'thread') {
     return `${base}
 
-You will be given a full conversation thread (multiple messages).
-
-- Make ONE classification for the entire thread.
-- Provide a short rationale that references the conversation.
-- Return cited_messages: an array of the specific message IDs (e.g. "doc-042") that best support your judgment. Do NOT cite every message—only the key evidence.`
+You will be given a full conversation thread (multiple messages between two co-parents).
+Make ONE classification for the entire thread. Only cite the 1–3 most important messages.`
   }
 
   return `${base}
 
-You will be given a single message (one document). Provide your classification for that message.`
+You will be given a single message. Classify that message. Use cited_messages with just that message's ID.`
 }
 
+// ── Main entry point ─────────────────────────────────────────────────────────
+
 export async function labelDocs(docSet: DocSet, args: Record<string, any>, ctx: ExecContext): Promise<OpResult> {
-  const schema = schemaKey(args?.schema)
+  const schema = String(args?.schema ?? '').trim()
   const unit = asUnit(args?.unit)
 
   if (!schema) {
@@ -131,40 +118,61 @@ export async function labelDocs(docSet: DocSet, args: Record<string, any>, ctx: 
   let totalOutputTokens = 0
   let calls = 0
 
-  const isTone = schema === 'tone'
-  const isTopic = schema === 'topic'
+  // Use nano for well-known simple schemas, mini for custom/complex ones
+  const isSimple = schema === 'tone' || schema === 'topic'
+  const model = isSimple ? 'gpt-5-nano' : 'gpt-5-mini'
+  const effort = isSimple ? 'low' : 'medium'
 
-  const model = isTone || isTopic ? 'gpt-5-nano' : 'gpt-5-mini'
-  const effort = isTone || isTopic ? 'low' : 'medium'
+  // All labels are stored under one consistent key per schema invocation.
+  // Short schemas ("tone", "topic") use themselves as the key.
+  // Custom schemas get stored under "label" (since there's typically one per plan).
+  const labelKey = isSimple ? schema : 'label'
+
+  const instructions = labelInstructions(schema, unit)
 
   if (unit === 'thread') {
     const groups = groupByThread(docSet, ctx.corpus)
 
-    for (const g of groups) {
+    await parallelMap(groups, async (g) => {
       calls += 1
 
-      const response = await openai.responses.create({
-        model,
-        instructions: labelInstructions(schema, unit),
-        input: g.rendered,
-        reasoning: { effort },
-        text: {
-          format: {
-            type: 'json_schema',
-            name: 'thread_label',
-            strict: true,
-            schema: isTone ? toneSchema(unit) : isTopic ? topicSchema(unit) : customSchema(unit)
-          }
-        },
-        store: false
-      })
+      let parsed: any = {}
+      try {
+        const response = await openai.responses.create({
+          model,
+          instructions,
+          input: g.rendered,
+          reasoning: { effort },
+          text: {
+            format: {
+              type: 'json_schema',
+              name: 'classification',
+              strict: true,
+              schema: LABEL_OUTPUT_SCHEMA
+            }
+          },
+          store: false
+        })
 
-      const usage: any = (response as any).usage ?? {}
-      totalInputTokens += Number(usage.input_tokens ?? 0)
-      totalOutputTokens += Number(usage.output_tokens ?? 0)
+        const usage: any = (response as any).usage ?? {}
+        const inputTokens = Number(usage.input_tokens ?? usage.prompt_tokens ?? 0)
+        const outputTokens = Number(usage.output_tokens ?? usage.completion_tokens ?? 0)
 
-      const parsed = JSON.parse((response as any).output_text ?? '{}') as any
-      const cited_messages = Array.isArray(parsed.cited_messages) ? parsed.cited_messages.map((x: any) => String(x)) : []
+        // Some SDK responses omit usage — fall back to a conservative estimate.
+        totalInputTokens += (inputTokens > 0 ? inputTokens : g.token_estimate)
+        totalOutputTokens += (outputTokens > 0 ? outputTokens : 180)
+
+        parsed = JSON.parse((response as any).output_text ?? '{}')
+      } catch {
+        return
+      }
+
+      const labelValue = String(parsed.label ?? '').trim().toLowerCase()
+      const confidence = clamp01(parsed.confidence)
+      const rationale = typeof parsed.rationale === 'string' ? parsed.rationale : ''
+      const cited_messages = Array.isArray(parsed.cited_messages)
+        ? parsed.cited_messages.map((x: any) => String(x))
+        : []
 
       const thread_meta: ThreadLabelMeta = {
         unit: 'thread',
@@ -172,35 +180,14 @@ export async function labelDocs(docSet: DocSet, args: Record<string, any>, ctx: 
         cited_messages
       }
 
-      if (isTone) {
-        const tone = String(parsed.overall_tone ?? 'neutral') as ToneLabel
-        const confidence = clamp01(parsed.confidence)
-        const rationale = typeof parsed.rationale === 'string' ? parsed.rationale : undefined
-        const key_phrases = Array.isArray(parsed.key_phrases) ? parsed.key_phrases.map((x: any) => String(x)) : undefined
-
-        for (const docId of g.docset_message_ids) {
-          mergeLabel(nextLabels, docId, 'tone', { value: tone, confidence, rationale, key_phrases, thread_meta })
-        }
-      } else if (isTopic) {
-        const primary_topic = String(parsed.primary_topic ?? '').trim() || 'unknown'
-        const confidence = clamp01(parsed.confidence)
-        const rationale = typeof parsed.rationale === 'string' ? parsed.rationale : undefined
-        const secondary_topics = Array.isArray(parsed.secondary_topics) ? parsed.secondary_topics.map((x: any) => String(x)) : undefined
-
-        for (const docId of g.docset_message_ids) {
-          mergeLabel(nextLabels, docId, 'topic', { value: primary_topic, confidence, rationale, secondary_topics, thread_meta })
-        }
-      } else {
-        const confidence = clamp01(parsed.confidence)
-        const matches = Boolean(parsed.matches)
-        const rationale = typeof parsed.rationale === 'string' ? parsed.rationale : undefined
-        const details = (parsed.details && typeof parsed.details === 'object') ? parsed.details : {}
-
-        for (const docId of g.docset_message_ids) {
-          mergeLabel(nextLabels, docId, schema, { value: { matches, details }, confidence, rationale, thread_meta })
-        }
+      for (const docId of g.docset_message_ids) {
+        const existing = nextLabels.get(docId) ?? {}
+        nextLabels.set(docId, {
+          ...existing,
+          [labelKey]: { value: labelValue, confidence, rationale, thread_meta }
+        } as Labels)
       }
-    }
+    }, CONCURRENCY)
 
     return {
       docSet: docSet.withLabels(nextLabels),
@@ -212,7 +199,9 @@ export async function labelDocs(docSet: DocSet, args: Record<string, any>, ctx: 
           schema,
           unit,
           model,
+          label_key: labelKey,
           calls,
+          concurrency: CONCURRENCY,
           thread_count: groups.length,
           token_estimate_total: groups.reduce((sum, g) => sum + g.token_estimate, 0),
           usage: { input_tokens: totalInputTokens, output_tokens: totalOutputTokens }
@@ -221,53 +210,52 @@ export async function labelDocs(docSet: DocSet, args: Record<string, any>, ctx: 
     }
   }
 
-  // unit === 'message' (simple implementation: one call per message)
-  for (const doc of docSet.docs) {
+  // unit === 'message' — parallel LLM calls
+  await parallelMap(docSet.docs as unknown as any[], async (doc: any) => {
     calls += 1
     const input = `Message [${doc.id}] ${doc.metadata.sender} — ${doc.timestamp}\n${doc.text}`.trim()
+    const inputEstimate = Math.ceil(input.length / 4)
 
-    const response = await openai.responses.create({
-      model,
-      instructions: labelInstructions(schema, unit),
-      input,
-      reasoning: { effort },
-      text: {
-        format: {
-          type: 'json_schema',
-          name: 'message_label',
-          strict: true,
-          schema: isTone ? toneSchema(unit) : isTopic ? topicSchema(unit) : customSchema(unit)
-        }
-      },
-      store: false
-    })
+    let parsed: any = {}
+    try {
+      const response = await openai.responses.create({
+        model,
+        instructions,
+        input,
+        reasoning: { effort },
+        text: {
+          format: {
+            type: 'json_schema',
+            name: 'classification',
+            strict: true,
+            schema: LABEL_OUTPUT_SCHEMA
+          }
+        },
+        store: false
+      })
 
-    const usage: any = (response as any).usage ?? {}
-    totalInputTokens += Number(usage.input_tokens ?? 0)
-    totalOutputTokens += Number(usage.output_tokens ?? 0)
+      const usage: any = (response as any).usage ?? {}
+      const inputTokens = Number(usage.input_tokens ?? usage.prompt_tokens ?? 0)
+      const outputTokens = Number(usage.output_tokens ?? usage.completion_tokens ?? 0)
 
-    const parsed = JSON.parse((response as any).output_text ?? '{}') as any
+      totalInputTokens += (inputTokens > 0 ? inputTokens : inputEstimate)
+      totalOutputTokens += (outputTokens > 0 ? outputTokens : 140)
 
-    if (isTone) {
-      const tone = String(parsed.overall_tone ?? 'neutral') as ToneLabel
-      const confidence = clamp01(parsed.confidence)
-      const rationale = typeof parsed.rationale === 'string' ? parsed.rationale : undefined
-      const key_phrases = Array.isArray(parsed.key_phrases) ? parsed.key_phrases.map((x: any) => String(x)) : undefined
-      mergeLabel(nextLabels, doc.id, 'tone', { value: tone, confidence, rationale, key_phrases })
-    } else if (isTopic) {
-      const primary_topic = String(parsed.primary_topic ?? '').trim() || 'unknown'
-      const confidence = clamp01(parsed.confidence)
-      const rationale = typeof parsed.rationale === 'string' ? parsed.rationale : undefined
-      const secondary_topics = Array.isArray(parsed.secondary_topics) ? parsed.secondary_topics.map((x: any) => String(x)) : undefined
-      mergeLabel(nextLabels, doc.id, 'topic', { value: primary_topic, confidence, rationale, secondary_topics })
-    } else {
-      const confidence = clamp01(parsed.confidence)
-      const matches = Boolean(parsed.matches)
-      const rationale = typeof parsed.rationale === 'string' ? parsed.rationale : undefined
-      const details = (parsed.details && typeof parsed.details === 'object') ? parsed.details : {}
-      mergeLabel(nextLabels, doc.id, schema, { value: { matches, details }, confidence, rationale })
+      parsed = JSON.parse((response as any).output_text ?? '{}')
+    } catch {
+      return
     }
-  }
+
+    const labelValue = String(parsed.label ?? '').trim().toLowerCase()
+    const confidence = clamp01(parsed.confidence)
+    const rationale = typeof parsed.rationale === 'string' ? parsed.rationale : ''
+
+    const existing = nextLabels.get(doc.id) ?? {}
+    nextLabels.set(doc.id, {
+      ...existing,
+      [labelKey]: { value: labelValue, confidence, rationale }
+    } as Labels)
+  }, CONCURRENCY)
 
   return {
     docSet: docSet.withLabels(nextLabels),
@@ -279,10 +267,11 @@ export async function labelDocs(docSet: DocSet, args: Record<string, any>, ctx: 
         schema,
         unit,
         model,
+        label_key: labelKey,
         calls,
+        concurrency: CONCURRENCY,
         usage: { input_tokens: totalInputTokens, output_tokens: totalOutputTokens }
       }
     }
   }
 }
-

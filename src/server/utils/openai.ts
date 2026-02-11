@@ -14,7 +14,13 @@ export function useOpenAI(): OpenAI {
       })
     }
 
-    _client = new OpenAI({ apiKey })
+    // Prevent requests from hanging indefinitely if the network/model stalls.
+    // (OpenAI Node SDK expects timeout in milliseconds.)
+    _client = new OpenAI({
+      apiKey,
+      timeout: 120_000,
+      maxRetries: 1
+    })
   }
 
   return _client

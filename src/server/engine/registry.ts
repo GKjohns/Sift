@@ -9,6 +9,7 @@ import { sampleDocs } from './ops/tier1/sample'
 import { getContext } from './ops/tier1/get-context'
 import { countDocs } from './ops/tier1/count'
 import { trendDocs } from './ops/tier1/trend'
+import { filterByLabel } from './ops/tier1/filter-by-label'
 
 // Structural
 import { unionSets } from './ops/structural/union'
@@ -28,6 +29,9 @@ export const registry: Record<string, OpFn> = {
   get_context: getContext,
   count: countDocs,
   trend: trendDocs,
+
+  // Label filtering
+  filter_by_label: filterByLabel,
 
   // Structural
   union: unionSets,

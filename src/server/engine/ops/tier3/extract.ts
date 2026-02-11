@@ -4,8 +4,12 @@ import type { DocSet } from '../../docset'
 import type { ExecContext, Labels, OpResult, Span } from '../../types'
 import { estimateCost } from '../../types'
 import { groupByThread } from '../../utils/thread-grouper'
+import { parallelMap } from '../../utils/parallel'
 
 import { useOpenAI } from '../../../utils/openai'
+
+/** Max concurrent OpenAI calls for extraction */
+const CONCURRENCY = 10
 
 type Unit = 'message' | 'thread'
 
@@ -143,31 +147,42 @@ export async function extractDocs(docSet: DocSet, args: Record<string, any>, ctx
 
   if (unit === 'thread') {
     const groups = groupByThread(docSet, ctx.corpus)
+    const instructions = extractInstructions(schema, unit)
+    const outSchema = extractSchema()
 
-    for (const g of groups) {
+    await parallelMap(groups, async (g) => {
       calls += 1
 
-      const response = await openai.responses.create({
-        model,
-        instructions: extractInstructions(schema, unit),
-        input: g.rendered,
-        reasoning: { effort: 'medium' },
-        text: {
-          format: {
-            type: 'json_schema',
-            name: 'thread_extract',
-            strict: true,
-            schema: extractSchema()
-          }
-        },
-        store: false
-      })
+      let parsed: any = {}
+      try {
+        const response = await openai.responses.create({
+          model,
+          instructions,
+          input: g.rendered,
+          reasoning: { effort: 'medium' },
+          text: {
+            format: {
+              type: 'json_schema',
+              name: 'thread_extract',
+              strict: true,
+              schema: outSchema
+            }
+          },
+          store: false
+        })
 
-      const usage: any = (response as any).usage ?? {}
-      totalInputTokens += Number(usage.input_tokens ?? 0)
-      totalOutputTokens += Number(usage.output_tokens ?? 0)
+        const usage: any = (response as any).usage ?? {}
+        const inputTokens = Number(usage.input_tokens ?? usage.prompt_tokens ?? 0)
+        const outputTokens = Number(usage.output_tokens ?? usage.completion_tokens ?? 0)
 
-      const parsed = JSON.parse((response as any).output_text ?? '{}') as any
+        totalInputTokens += (inputTokens > 0 ? inputTokens : g.token_estimate)
+        totalOutputTokens += (outputTokens > 0 ? outputTokens : 240)
+
+        parsed = JSON.parse((response as any).output_text ?? '{}')
+      } catch {
+        return
+      }
+
       const itemsRaw = Array.isArray(parsed.extractions) ? parsed.extractions : []
       const items: ExtractionItem[] = itemsRaw.map((x: any) => ({
         message_id: String(x?.message_id ?? ''),
@@ -184,7 +199,6 @@ export async function extractDocs(docSet: DocSet, args: Record<string, any>, ctx
         byMsg.get(it.message_id)!.push(it)
       }
 
-      // Attach only to messages that are in the current DocSet (not entire corpus thread).
       for (const docId of g.docset_message_ids) {
         const mine = byMsg.get(docId) ?? []
         if (mine.length === 0) continue
@@ -196,7 +210,7 @@ export async function extractDocs(docSet: DocSet, args: Record<string, any>, ctx
           spans: spansFromExtractions(mine)
         })
       }
-    }
+    }, CONCURRENCY)
 
     return {
       docSet: docSet.withLabels(nextLabels),
@@ -209,6 +223,7 @@ export async function extractDocs(docSet: DocSet, args: Record<string, any>, ctx
           unit,
           model,
           calls,
+          concurrency: CONCURRENCY,
           thread_count: groups.length,
           token_estimate_total: groups.reduce((sum, g) => sum + g.token_estimate, 0),
           usage: { input_tokens: totalInputTokens, output_tokens: totalOutputTokens },
@@ -218,32 +233,45 @@ export async function extractDocs(docSet: DocSet, args: Record<string, any>, ctx
     }
   }
 
-  // unit === 'message' (simple implementation: one call per message)
-  for (const doc of docSet.docs) {
+  // unit === 'message' — parallel LLM calls
+  const instructions = extractInstructions(schema, unit)
+  const outSchema = extractSchema()
+
+  await parallelMap(docSet.docs as unknown as any[], async (doc: any) => {
     calls += 1
     const input = `Message [${doc.id}] ${doc.metadata.sender} — ${doc.timestamp}\n${doc.text}`.trim()
+    const inputEstimate = Math.ceil(input.length / 4)
 
-    const response = await openai.responses.create({
-      model,
-      instructions: extractInstructions(schema, unit),
-      input,
-      reasoning: { effort: 'medium' },
-      text: {
-        format: {
-          type: 'json_schema',
-          name: 'message_extract',
-          strict: true,
-          schema: extractSchema()
-        }
-      },
-      store: false
-    })
+    let parsed: any = {}
+    try {
+      const response = await openai.responses.create({
+        model,
+        instructions,
+        input,
+        reasoning: { effort: 'medium' },
+        text: {
+          format: {
+            type: 'json_schema',
+            name: 'message_extract',
+            strict: true,
+            schema: outSchema
+          }
+        },
+        store: false
+      })
 
-    const usage: any = (response as any).usage ?? {}
-    totalInputTokens += Number(usage.input_tokens ?? 0)
-    totalOutputTokens += Number(usage.output_tokens ?? 0)
+      const usage: any = (response as any).usage ?? {}
+      const inputTokens = Number(usage.input_tokens ?? usage.prompt_tokens ?? 0)
+      const outputTokens = Number(usage.output_tokens ?? usage.completion_tokens ?? 0)
 
-    const parsed = JSON.parse((response as any).output_text ?? '{}') as any
+      totalInputTokens += (inputTokens > 0 ? inputTokens : inputEstimate)
+      totalOutputTokens += (outputTokens > 0 ? outputTokens : 240)
+
+      parsed = JSON.parse((response as any).output_text ?? '{}')
+    } catch {
+      return
+    }
+
     const itemsRaw = Array.isArray(parsed.extractions) ? parsed.extractions : []
     const items: ExtractionItem[] = itemsRaw.map((x: any) => ({
       message_id: doc.id,
@@ -258,7 +286,7 @@ export async function extractDocs(docSet: DocSet, args: Record<string, any>, ctx
       const confidence = items.reduce((sum, x) => sum + clamp01(x.confidence), 0) / items.length
       mergeLabel(nextLabels, doc.id, labelKey, { value: items, confidence, spans: spansFromExtractions(items) })
     }
-  }
+  }, CONCURRENCY)
 
   return {
     docSet: docSet.withLabels(nextLabels),
