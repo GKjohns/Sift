@@ -2,9 +2,20 @@
 import type { NavigationMenuItem } from '@nuxt/ui'
 
 const open = ref(false)
-const { state } = useCorpus()
+const { state, bootstrapCorpus } = useCorpus()
+
+onMounted(() => {
+  bootstrapCorpus()
+})
 
 const links = [[{
+  label: 'Upload',
+  icon: 'i-lucide-upload',
+  to: '/upload',
+  onSelect: () => {
+    open.value = false
+  }
+}, {
   label: 'Overview',
   icon: 'i-lucide-layout-dashboard',
   to: '/overview',
@@ -15,6 +26,13 @@ const links = [[{
   label: 'Messages',
   icon: 'i-lucide-message-square-text',
   to: '/messages',
+  onSelect: () => {
+    open.value = false
+  }
+}, {
+  label: 'Threads',
+  icon: 'i-lucide-messages-square',
+  to: '/messages/threads',
   onSelect: () => {
     open.value = false
   }
@@ -112,7 +130,7 @@ const groups = computed(() => [{
         </div>
 
         <!-- Corpus info (collapsed state - just show icon) -->
-        <UTooltip v-else :text="state.loaded.value ? state.filename.value : 'No corpus loaded'" class="mb-3">
+        <UTooltip v-else :text="state.loaded.value ? (state.filename.value ?? 'Corpus loaded') : 'No corpus loaded'" class="mb-3">
           <div class="flex items-center justify-center p-2 rounded-lg bg-elevated/50 border border-default mx-1">
             <UIcon
               v-if="state.loaded.value"

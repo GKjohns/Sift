@@ -5,7 +5,7 @@ const route = useRoute()
 const threadId = computed(() => route.params.threadId as string)
 
 const { data: thread, status } = useFetch<ThreadDetailResponse>(
-  () => `/api/messages/${threadId.value}`,
+  () => `/api/messages/thread/${threadId.value}`,
   { immediate: true }
 )
 

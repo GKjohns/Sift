@@ -15,11 +15,11 @@ const planResult = ref<any>(null)
 const planError = ref<string | null>(null)
 
 const planExamples = [
-  'Find messages where scheduling was contentious',
-  'How many messages mention the word "lawyer"?',
-  'Show me all medical-related discussions',
+  'Find threads where custody schedule changes were disputed',
+  'Are there messages where a parent raised safety concerns about the home?',
+  'Show conversations about moving or lease logistics',
   'What is the trend of hostile messages over time?',
-  'Find all expense-related disagreements over $200',
+  'Find messages where one parent accused the other of not cooperating',
   'Is there a pattern of one parent being less responsive?'
 ]
 

@@ -3,8 +3,57 @@ useDashboard()
 
 const { state, uploadCorpus, documentCount, senderNames, dateRange } = useCorpus()
 
-async function handleUpload() {
-  await uploadCorpus('ofw_export.pdf')
+const fileInputRef = ref<HTMLInputElement | null>(null)
+const selectedFile = ref<File | null>(null)
+const dragOver = ref(false)
+
+// OFW export helper (UI recreation)
+const ofwExport = reactive({
+  messages: 'all_in_folder',
+  sort: 'oldest_to_newest',
+  attachments: 'include_all_in_folder',
+  includeOfficialHeader: false,
+  includeReplies: true,
+  includeProfessionalPrivate: false,
+  newPagePerMessage: true,
+})
+
+const ofwExportMessagesItems = [
+  { label: 'All In Folder', value: 'all_in_folder' },
+]
+const ofwExportSortItems = [
+  { label: 'Oldest to newest', value: 'oldest_to_newest' },
+  { label: 'Newest to oldest', value: 'newest_to_oldest' },
+]
+const ofwExportAttachmentsItems = [
+  { label: 'Include all in folder', value: 'include_all_in_folder' },
+  { label: "Don't include attachments", value: 'exclude_all' },
+]
+
+function triggerFileInput() {
+  fileInputRef.value?.click()
+}
+
+function onFileSelected(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (file) {
+    selectedFile.value = file
+    handleUpload(file)
+  }
+}
+
+function onDrop(event: DragEvent) {
+  dragOver.value = false
+  const file = event.dataTransfer?.files?.[0]
+  if (file && file.name.toLowerCase().endsWith('.pdf')) {
+    selectedFile.value = file
+    handleUpload(file)
+  }
+}
+
+async function handleUpload(file: File) {
+  await uploadCorpus(file)
 }
 
 // Format month labels for chart
@@ -34,24 +83,159 @@ function formatMonth(month: string) {
 
             <template #content>
               <div class="p-6 space-y-4">
-                <div
-                  class="border-2 border-dashed border-default rounded-lg p-8 text-center space-y-3 hover:border-primary/50 transition-colors cursor-pointer"
-                  @click="handleUpload"
+                <!-- OFW Export instructions -->
+                <div class="rounded-lg border border-default bg-default p-4">
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="space-y-1">
+                      <h3 class="text-sm font-semibold text-highlighted">Export from OurFamilyWizard</h3>
+                      <p class="text-xs text-muted">
+                        Export a <span class="font-medium">Messages Report</span> PDF from OFW using these settings, then upload it below.
+                      </p>
+                    </div>
+                    <UBadge label="PDF" variant="subtle" color="neutral" />
+                  </div>
+
+                  <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Left: settings form -->
+                    <div class="space-y-3">
+                      <div class="space-y-1">
+                        <p class="text-xs font-medium text-muted uppercase tracking-wide">Messages</p>
+                        <USelect
+                          v-model="ofwExport.messages"
+                          :items="ofwExportMessagesItems"
+                          value-key="value"
+                          label-key="label"
+                          color="neutral"
+                        />
+                      </div>
+
+                      <div class="space-y-1">
+                        <p class="text-xs font-medium text-muted uppercase tracking-wide">Sort messages by</p>
+                        <USelect
+                          v-model="ofwExport.sort"
+                          :items="ofwExportSortItems"
+                          value-key="value"
+                          label-key="label"
+                          color="neutral"
+                        />
+                      </div>
+
+                      <div class="space-y-1">
+                        <p class="text-xs font-medium text-muted uppercase tracking-wide">Attachments</p>
+                        <USelect
+                          v-model="ofwExport.attachments"
+                          :items="ofwExportAttachmentsItems"
+                          value-key="value"
+                          label-key="label"
+                          color="neutral"
+                        />
+                        <p class="text-[11px] text-muted">
+                          Attachments are optional. If you include them, we’ll store the file now; parsing attachment contents is coming later.
+                        </p>
+                      </div>
+
+                      <div class="space-y-2 pt-1">
+                        <UCheckbox
+                          v-model="ofwExport.includeOfficialHeader"
+                          label="Include official OurFamilyWizard header"
+                          color="primary"
+                        />
+                        <UCheckbox
+                          v-model="ofwExport.includeReplies"
+                          label="Include message replies"
+                          color="primary"
+                        />
+                        <div class="space-y-1">
+                          <UCheckbox
+                            v-model="ofwExport.includeProfessionalPrivate"
+                            label="Include private messages with your Professional"
+                            color="primary"
+                          />
+                          <p class="text-[11px] text-muted pl-6">
+                            Optional. By default, private messages between just you and your Professional are excluded from reports.
+                          </p>
+                        </div>
+                        <UCheckbox
+                          v-model="ofwExport.newPagePerMessage"
+                          label="New page per message"
+                          color="primary"
+                        />
+                      </div>
+
+                      <div class="rounded-lg bg-elevated/50 border border-default p-3 text-xs text-muted">
+                        <p class="font-medium text-highlighted mb-1">Optional</p>
+                        <ul class="list-disc pl-4 space-y-1">
+                          <li>Limit the date range if you want to focus on a specific period.</li>
+                          <li>Choose whether to include attachments (parsing those comes later).</li>
+                        </ul>
+                      </div>
+                    </div>
+
+                    <!-- Right: preview -->
+                    <div class="rounded-lg border border-default bg-default p-4">
+                      <div class="aspect-[4/5] w-full rounded-md border border-default bg-elevated/30 p-3">
+                        <div class="space-y-3">
+                          <div class="space-y-1">
+                            <div class="h-2 w-28 bg-default/70 rounded" />
+                            <div class="h-2 w-20 bg-default/60 rounded" />
+                            <div class="h-2 w-24 bg-default/60 rounded" />
+                            <div class="h-2 w-16 bg-default/60 rounded" />
+                          </div>
+                          <div class="h-px w-full bg-default/70" />
+                          <div class="space-y-2">
+                            <div class="h-2 w-full bg-default/60 rounded" />
+                            <div class="h-2 w-11/12 bg-default/60 rounded" />
+                            <div class="h-2 w-10/12 bg-default/60 rounded" />
+                            <div class="h-2 w-8/12 bg-default/60 rounded" />
+                          </div>
+                          <div class="h-px w-full bg-default/70" />
+                          <div class="space-y-2">
+                            <div class="h-2 w-full bg-default/60 rounded" />
+                            <div class="h-2 w-11/12 bg-default/60 rounded" />
+                            <div class="h-2 w-9/12 bg-default/60 rounded" />
+                          </div>
+                        </div>
+                      </div>
+                      <p class="text-xs text-muted mt-3">
+                        When you’re done in OFW, click <span class="font-medium text-highlighted">Download</span> and upload the PDF below.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Hidden file input -->
+                <input
+                  ref="fileInputRef"
+                  type="file"
+                  accept=".pdf"
+                  class="hidden"
+                  @change="onFileSelected"
                 >
-                  <UIcon name="i-lucide-upload-cloud" class="size-12 text-muted mx-auto" />
-                  <div>
-                    <p class="text-sm font-medium text-highlighted">Click to upload or drag and drop</p>
-                    <p class="text-xs text-muted">PDF files only (OFW export format)</p>
+
+                <!-- Drop zone -->
+                <div
+                  class="border-2 border-dashed rounded-lg p-8 text-center space-y-3 transition-colors cursor-pointer"
+                  :class="dragOver ? 'border-primary bg-primary/5' : 'border-default hover:border-primary/50'"
+                  @click="triggerFileInput"
+                  @dragover.prevent="dragOver = true"
+                  @dragleave="dragOver = false"
+                  @drop.prevent="onDrop"
+                >
+                  <UIcon v-if="state.loading.value" name="i-lucide-loader-circle" class="size-12 text-primary mx-auto animate-spin" />
+                  <UIcon v-else name="i-lucide-upload-cloud" class="size-12 text-muted mx-auto" />
+                  <div v-if="state.loading.value">
+                    <p class="text-sm font-medium text-highlighted">{{ state.uploadProgress.value }}</p>
+                    <p class="text-xs text-muted">{{ selectedFile?.name }}</p>
+                  </div>
+                  <div v-else>
+                    <p class="text-sm font-medium text-highlighted">Click to select or drag and drop</p>
+                    <p class="text-xs text-muted">OFW Message Report PDF</p>
                   </div>
                 </div>
 
                 <div class="flex items-center gap-2 text-xs text-muted bg-elevated rounded-lg p-3">
                   <UIcon name="i-lucide-info" class="size-4 shrink-0" />
-                  <p>For this demo, clicking upload will load a sample OFW corpus with 59 messages between two co-parents.</p>
-                </div>
-
-                <div class="flex justify-end gap-2">
-                  <UButton label="Load Sample Data" icon="i-lucide-database" @click="handleUpload" />
+                  <p>Upload an OFW "Messages Report" PDF export. The parser will extract all messages, threads, and metadata deterministically.</p>
                 </div>
               </div>
             </template>
@@ -138,7 +322,7 @@ function formatMonth(month: string) {
                 v-for="entry in state.stats.value.volume_by_month.filter(v => v.month === month)"
                 :key="entry.sender"
                 class="h-full rounded flex items-center justify-center text-xs font-medium text-inverted transition-all"
-                :class="entry.sender.includes('Sarah') ? 'bg-primary' : 'bg-primary/60'"
+                :class="entry.sender === state.stats.value.senders[0]?.name ? 'bg-primary' : 'bg-primary/60'"
                 :style="{ width: `${Math.max(entry.count * 8, 3)}%` }"
               >
                 <span v-if="entry.count > 2" class="px-1">{{ entry.count }}</span>
