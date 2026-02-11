@@ -1,7 +1,9 @@
-export default defineEventHandler(async () => {
-  await delay(300)
+import { getCorpus } from '../../utils/corpus-store'
 
-  const docs = generateDocuments()
-  const labels = generateLabels(docs)
-  return buildCorpusStats(docs, labels)
+export default defineEventHandler(async () => {
+  const corpus = await getCorpus()
+  if (!corpus) {
+    throw createError({ statusCode: 404, message: 'No corpus loaded' })
+  }
+  return corpus.stats
 })
