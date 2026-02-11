@@ -19,6 +19,12 @@ const expandedSteps = ref<Set<string>>(new Set())
 // Track whether we have an active query session (running or has results)
 const hasActiveSession = computed(() => isRunning.value || result.value !== null)
 
+// Detect platform for keyboard shortcut display (client-side only)
+const isMac = computed(() => {
+  if (typeof window === 'undefined') return false
+  return navigator?.platform?.toLowerCase().includes('mac') ?? false
+})
+
 type SynthAnswerBlob = {
   answer: string
   citations?: { doc_id: string; preview: string; thread_id?: string }[]
@@ -224,9 +230,11 @@ function navigateToMessage(docId: string) {
                 :ui="{ content: 'w-80', itemLabel: 'whitespace-normal' }"
                 @update:model-value="onExampleSelect"
               />
-              <span v-if="!hasActiveSession" class="text-xs text-dimmed">
-                <kbd class="px-1.5 py-0.5 rounded border border-default bg-elevated text-[10px] font-mono">{{ navigator?.platform?.includes('Mac') ? '⌘' : 'Ctrl' }}+Enter</kbd>
-              </span>
+              <ClientOnly>
+                <span v-if="!hasActiveSession" class="text-xs text-dimmed">
+                  <kbd class="px-1.5 py-0.5 rounded border border-default bg-elevated text-[10px] font-mono">{{ isMac ? '⌘' : 'Ctrl' }}+Enter</kbd>
+                </span>
+              </ClientOnly>
             </div>
             <div class="flex items-center gap-2">
               <button
