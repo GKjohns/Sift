@@ -19,6 +19,7 @@
     "@vueuse/nuxt": "^14.2.0",
     "nuxt": "^4.3.0",
     "openai": "^6.18.0",
+    "pdfjs-dist": "^5.4.624",
     "tailwindcss": "^4.1.18"
   },
   "devDependencies": {
