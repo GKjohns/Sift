@@ -137,7 +137,7 @@ function formatMonth(month: string) {
               <div
                 v-for="entry in state.stats.value.volume_by_month.filter(v => v.month === month)"
                 :key="entry.sender"
-                class="h-full rounded flex items-center justify-center text-xs font-medium text-white transition-all"
+                class="h-full rounded flex items-center justify-center text-xs font-medium text-inverted transition-all"
                 :class="entry.sender.includes('Sarah') ? 'bg-primary' : 'bg-primary/60'"
                 :style="{ width: `${Math.max(entry.count * 8, 3)}%` }"
               >
@@ -194,19 +194,19 @@ function formatMonth(month: string) {
             </div>
             <div class="flex h-6 rounded-lg overflow-hidden gap-0.5">
               <div
-                class="bg-red-500/80 flex items-center justify-center text-xs text-white font-medium transition-all"
+                class="bg-error/80 flex items-center justify-center text-xs text-inverted font-medium transition-all"
                 :style="{ width: `${(dist.hostile / (dist.hostile + dist.neutral + dist.cooperative)) * 100}%` }"
               >
                 <span v-if="dist.hostile > 2">{{ dist.hostile }}</span>
               </div>
               <div
-                class="bg-neutral-400 flex items-center justify-center text-xs text-white font-medium transition-all"
+                class="bg-accented flex items-center justify-center text-xs text-highlighted font-medium transition-all"
                 :style="{ width: `${(dist.neutral / (dist.hostile + dist.neutral + dist.cooperative)) * 100}%` }"
               >
                 <span v-if="dist.neutral > 2">{{ dist.neutral }}</span>
               </div>
               <div
-                class="bg-primary flex items-center justify-center text-xs text-white font-medium transition-all"
+                class="bg-primary flex items-center justify-center text-xs text-inverted font-medium transition-all"
                 :style="{ width: `${(dist.cooperative / (dist.hostile + dist.neutral + dist.cooperative)) * 100}%` }"
               >
                 <span v-if="dist.cooperative > 2">{{ dist.cooperative }}</span>
@@ -215,11 +215,11 @@ function formatMonth(month: string) {
           </div>
           <div class="flex items-center gap-4 text-xs text-muted">
             <div class="flex items-center gap-1.5">
-              <div class="size-3 rounded bg-red-500/80" />
+              <div class="size-3 rounded bg-error/80" />
               <span>Hostile</span>
             </div>
             <div class="flex items-center gap-1.5">
-              <div class="size-3 rounded bg-neutral-400" />
+              <div class="size-3 rounded bg-accented" />
               <span>Neutral</span>
             </div>
             <div class="flex items-center gap-1.5">

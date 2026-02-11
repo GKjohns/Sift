@@ -54,11 +54,6 @@ watch(() => state.loaded.value, (loaded) => {
   if (loaded) refresh()
 }, { immediate: true })
 
-// Auto-load corpus if not loaded yet (e.g. direct navigation or page refresh)
-if (!state.loaded.value && !state.loading.value) {
-  uploadCorpus()
-}
-
 const messages = computed(() => messagesData.value?.messages ?? [])
 const totalCount = computed(() => messagesData.value?.total ?? 0)
 const senderOptions = computed(() => {
@@ -128,7 +123,7 @@ function highlightSearch(text: string): string {
   if (!search.value.trim()) return text
   const escaped = search.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const regex = new RegExp(`(${escaped})`, 'gi')
-  return text.replace(regex, '<mark class="bg-yellow-200 dark:bg-yellow-800 rounded px-0.5">$1</mark>')
+  return text.replace(regex, '<mark class="bg-warning/20 text-highlighted rounded px-0.5">$1</mark>')
 }
 </script>
 
@@ -220,7 +215,7 @@ function highlightSearch(text: string): string {
               class="size-9 rounded-full flex items-center justify-center text-xs font-semibold shrink-0"
               :class="msg.sender.includes('Sarah')
                 ? 'bg-primary/10 text-primary'
-                : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300'"
+                : 'bg-accented text-toned'"
             >
               {{ senderInitial(msg.sender) }}
             </div>

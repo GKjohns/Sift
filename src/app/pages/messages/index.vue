@@ -138,7 +138,7 @@ function senderInitial(name: string) {
                 class="size-8 rounded-full flex items-center justify-center text-xs font-semibold ring-2 ring-default"
                 :class="sender.includes('Sarah')
                   ? 'bg-primary/10 text-primary'
-                  : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300'"
+                  : 'bg-accented text-toned'"
               >
                 {{ senderInitial(sender) }}
               </div>
@@ -167,12 +167,12 @@ function senderInitial(name: string) {
                   <div
                     v-for="n in thread.tone_summary.hostile"
                     :key="`h-${n}`"
-                    class="size-1.5 rounded-full bg-red-500/80"
+                    class="size-1.5 rounded-full bg-error/80"
                   />
                   <div
                     v-for="n in thread.tone_summary.neutral"
                     :key="`n-${n}`"
-                    class="size-1.5 rounded-full bg-neutral-400"
+                    class="size-1.5 rounded-full bg-accented"
                   />
                   <div
                     v-for="n in thread.tone_summary.cooperative"

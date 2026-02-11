@@ -79,6 +79,59 @@ const groups = computed(() => [{
       <template #default="{ collapsed }">
         <UDashboardSearchButton :collapsed="collapsed" class="bg-transparent ring-default" />
 
+        <!-- Corpus info below search (expanded) -->
+        <div v-if="!collapsed" class="px-1 mb-3">
+          <!-- Corpus loaded state -->
+          <div v-if="state.loaded.value" class="flex items-center gap-2 p-2 rounded-lg bg-elevated/50 border border-default">
+            <div class="relative shrink-0">
+              <UIcon name="i-lucide-file-check-2" class="size-4 text-primary" />
+            </div>
+            <div class="min-w-0">
+              <p class="text-xs font-medium text-highlighted truncate">{{ state.filename.value }}</p>
+              <p class="text-[10px] text-muted">{{ state.stats.value?.total_documents }} messages</p>
+            </div>
+          </div>
+
+          <!-- Loading state -->
+          <div v-else-if="state.loading.value" class="flex items-center gap-2 p-2 rounded-lg bg-elevated/50 border border-default">
+            <UIcon name="i-lucide-loader-circle" class="size-4 text-primary animate-spin shrink-0" />
+            <div class="min-w-0">
+              <p class="text-xs font-medium text-highlighted truncate">{{ state.uploadProgress.value }}</p>
+              <p class="text-[10px] text-muted">Please wait...</p>
+            </div>
+          </div>
+
+          <!-- Empty state -->
+          <div v-else class="flex items-center gap-2 p-2 rounded-lg bg-elevated/50 border border-default">
+            <UIcon name="i-lucide-file-text" class="size-4 text-muted shrink-0" />
+            <div class="min-w-0">
+              <p class="text-xs font-medium text-highlighted truncate">No corpus</p>
+              <p class="text-[10px] text-muted">Upload to begin</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Corpus info (collapsed state - just show icon) -->
+        <UTooltip v-else :text="state.loaded.value ? state.filename.value : 'No corpus loaded'" class="mb-3">
+          <div class="flex items-center justify-center p-2 rounded-lg bg-elevated/50 border border-default mx-1">
+            <UIcon
+              v-if="state.loaded.value"
+              name="i-lucide-file-check-2"
+              class="size-4 text-primary"
+            />
+            <UIcon
+              v-else-if="state.loading.value"
+              name="i-lucide-loader-circle"
+              class="size-4 text-primary animate-spin"
+            />
+            <UIcon
+              v-else
+              name="i-lucide-file-text"
+              class="size-4 text-muted"
+            />
+          </div>
+        </UTooltip>
+
         <UNavigationMenu
           :collapsed="collapsed"
           :items="links[0]"
@@ -97,34 +150,7 @@ const groups = computed(() => [{
       </template>
 
       <template #footer="{ collapsed }">
-        <!-- Corpus loaded state -->
-        <div v-if="state.loaded.value" class="flex items-center gap-2 px-1" :class="collapsed ? 'justify-center' : ''">
-          <div class="relative shrink-0">
-            <UIcon name="i-lucide-file-check-2" class="size-5 text-primary" />
-          </div>
-          <div v-if="!collapsed" class="min-w-0">
-            <p class="text-sm font-medium text-highlighted truncate">{{ state.filename.value }}</p>
-            <p class="text-xs text-muted">{{ state.stats.value?.total_documents }} messages loaded</p>
-          </div>
-        </div>
-
-        <!-- Loading state -->
-        <div v-else-if="state.loading.value" class="flex items-center gap-2 px-1" :class="collapsed ? 'justify-center' : ''">
-          <UIcon name="i-lucide-loader-circle" class="size-5 text-primary animate-spin shrink-0" />
-          <div v-if="!collapsed" class="min-w-0">
-            <p class="text-sm font-medium text-highlighted truncate">{{ state.uploadProgress.value }}</p>
-            <p class="text-xs text-muted">Please wait...</p>
-          </div>
-        </div>
-
-        <!-- Empty state -->
-        <div v-else class="flex items-center gap-2 px-1" :class="collapsed ? 'justify-center' : ''">
-          <UIcon name="i-lucide-file-text" class="size-5 text-muted shrink-0" />
-          <div v-if="!collapsed" class="min-w-0">
-            <p class="text-sm font-medium text-highlighted truncate">No corpus loaded</p>
-            <p class="text-xs text-muted">Upload a file to begin</p>
-          </div>
-        </div>
+        <UserMenu :collapsed="collapsed" />
       </template>
     </UDashboardSidebar>
 

@@ -69,9 +69,9 @@ function formatShortDate(dateStr: string) {
 }
 
 function toneDotColor(tone: string) {
-  if (tone === 'hostile') return 'bg-red-500'
-  if (tone === 'cooperative') return 'bg-green-500'
-  return 'bg-neutral-400'
+  if (tone === 'hostile') return 'bg-error'
+  if (tone === 'cooperative') return 'bg-success'
+  return 'bg-accented'
 }
 
 function toneColor(tone: string): 'error' | 'neutral' | 'success' {

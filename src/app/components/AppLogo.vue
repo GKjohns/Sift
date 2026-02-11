@@ -18,9 +18,9 @@ withDefaults(defineProps<{
       aria-label="Sift"
       :class="[markClass, 'w-auto shrink-0 text-primary']"
     >
-      <rect x="0" y="0" width="48" height="7" rx="3.5" fill="currentColor" class="fill-primary" />
-      <rect x="8" y="13" width="32" height="7" rx="3.5" fill="currentColor" class="fill-primary" />
-      <rect x="16" y="26" width="16" height="7" rx="3.5" fill="currentColor" class="fill-primary" />
+      <rect x="0" y="0" width="48" height="7" rx="2" fill="currentColor" class="fill-primary" />
+      <rect x="8" y="13" width="32" height="7" rx="2" fill="currentColor" class="fill-primary" />
+      <rect x="16" y="26" width="16" height="7" rx="2" fill="currentColor" class="fill-primary" />
     </svg>
 
     <span v-if="showText" class="font-semibold text-2xl tracking-tight text-highlighted">Sift</span>

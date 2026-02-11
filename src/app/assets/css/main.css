@@ -11,12 +11,12 @@
   - Force "primary" to be solid black/white across modes
 */
 :root {
-  --ui-primary: black;
+  --ui-primary: var(--ui-bg-inverted);
 
   /* Tune core tokens for a clean grayscale feel */
-  --ui-bg: white;
+  --ui-bg: var(--ui-color-neutral-50);
   --ui-bg-muted: var(--ui-color-neutral-50);
-  --ui-bg-elevated: white;
+  --ui-bg-elevated: var(--ui-color-neutral-50);
   --ui-bg-accented: var(--ui-color-neutral-100);
   --ui-bg-inverted: var(--ui-color-neutral-950);
 
@@ -29,28 +29,28 @@
   --ui-text-muted: var(--ui-color-neutral-600);
   --ui-text-toned: var(--ui-color-neutral-700);
   --ui-text: var(--ui-color-neutral-800);
-  --ui-text-highlighted: black;
-  --ui-text-inverted: white;
+  --ui-text-highlighted: var(--ui-primary);
+  --ui-text-inverted: var(--ui-bg);
 }
 
 .dark {
-  --ui-primary: white;
+  --ui-primary: var(--ui-bg-inverted);
 
   --ui-bg: var(--ui-color-neutral-950);
   --ui-bg-muted: var(--ui-color-neutral-900);
   --ui-bg-elevated: var(--ui-color-neutral-900);
   --ui-bg-accented: var(--ui-color-neutral-800);
-  --ui-bg-inverted: white;
+  --ui-bg-inverted: var(--ui-color-neutral-50);
 
   --ui-border: var(--ui-color-neutral-800);
   --ui-border-muted: var(--ui-color-neutral-800);
   --ui-border-accented: var(--ui-color-neutral-700);
-  --ui-border-inverted: white;
+  --ui-border-inverted: var(--ui-color-neutral-50);
 
   --ui-text-dimmed: var(--ui-color-neutral-400);
   --ui-text-muted: var(--ui-color-neutral-300);
   --ui-text-toned: var(--ui-color-neutral-200);
   --ui-text: var(--ui-color-neutral-100);
-  --ui-text-highlighted: white;
+  --ui-text-highlighted: var(--ui-primary);
   --ui-text-inverted: var(--ui-color-neutral-950);
 }
